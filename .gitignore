@@ -2,3 +2,7 @@
 target/
 imbalancelearning.iml
 logs/
+Arffs_old_paper/
+.RData
+.Rhistory
+DetailFiles/

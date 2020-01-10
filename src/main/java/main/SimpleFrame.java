@@ -27,7 +27,7 @@ public class SimpleFrame extends JFrame{
     private static Logger logger = Logger.getLogger(SimpleFrame.class);
 
     private JFrame frame;
-    private JButton submit, clear;
+    private JButton submit, clear, runAll;
     private JTextField numFolds_text, times_text;
     private JPanel panel;
     private JComboBox<String> in_out_comboBox;
@@ -257,9 +257,14 @@ public class SimpleFrame extends JFrame{
         clear.setBounds(110, 170, 80, 20);
         panel.add(clear);
 
+        // 一键运行
+        runAll = new JButton("一键运行");
+        runAll.setBounds(210, 170, 80, 20);
+        panel.add(runAll);
+
         // 结果详情：
         JLabel resultLabel = new JLabel("结果详情");
-        resultLabel.setBounds(200, 170, 500, 20);
+        resultLabel.setBounds(310, 170, 500, 20);
         resultLabel.setForeground(Color.RED);
         resultLabel.setVisible(false);
         panel.add(resultLabel);
@@ -470,13 +475,88 @@ public class SimpleFrame extends JFrame{
             public void actionPerformed(ActionEvent e) {
                 resultLabel.setVisible(false);
                 DefaultTableModel model = (DefaultTableModel) tabel.getModel();
-                for(int i = 1; i <= results.size(); i++) {
-                    List<String> tempList = results.get(i-1);
-                    for (int j = 0; j < tempList.size(); j++) {
+                for(int i = 1; i < model.getRowCount(); i++) {
+                    for (int j = 0; j < model.getColumnCount(); j++) {
                         model.setValueAt("", i, j);
                     }
                 }
                 results = new ArrayList<>();
+            }
+        });
+
+        // 一键运行
+        runAll.addActionListener(new ActionListener(){
+            public void actionPerformed(ActionEvent e){
+                if(filePath == null || filePath.length() == 0) {
+                    errorLabel1.setText("请选择一个数据集");
+                    errorLabel1.setVisible(true);
+                } else {
+                    try {
+                        times = Integer.parseInt(times_text.getText());
+                    } catch (NumberFormatException errmsg) {
+                        errorLabel2.setText("输入N不合法");
+                        errorLabel2.setVisible(true);
+                        logger.error(errmsg.getMessage());
+                        return;
+                    }
+                    if(times <= 0) {
+                        errorLabel2.setText("输入N不合法");
+                        errorLabel2.setVisible(true);
+                        return;
+                    }
+                    try {
+                        numFolds = Integer.parseInt(numFolds_text.getText());
+                    } catch(NumberFormatException errmsg) {
+                        errorLabel2.setText("输入K不合法");
+                        errorLabel2.setVisible(true);
+                        logger.error(errmsg.getMessage());
+                        return;
+                    }
+                    if(numFolds < 2) {
+                        errorLabel2.setText("输入K不合法");
+                        errorLabel2.setVisible(true);
+                        return;
+                    }
+
+
+                    String[][] predict_result;
+                    try {
+                        if(!preFilePath.equals(filePath)) {
+                            preFilePath = filePath;
+                            FileReader fr = new FileReader(filePath);
+                            BufferedReader br = new BufferedReader(fr);
+                            data = new Instances(br);
+                            data.setClassIndex(data.numAttributes()-1);
+                            //print out number of instances
+                            logger.info("Total number of instances: "+data.numInstances());
+                            AttributeStats as = data.attributeStats(data.numAttributes()-1);
+                            int count[] = as.nominalCounts;
+                            logger.info("Number of good instances: " + count[0]);
+                            logger.info("Number of buggy instances: " + count[1]);
+
+                            initProperty(classifier_name);
+                        }
+
+                        if(results.size()+1 == tableRows) {
+                            resultLabel.setText("容量已满，请清空结果");
+                            resultLabel.setVisible(true);
+                            return;
+                        }
+                        predict_result = getAllClassification();
+                    } catch(Exception err) {
+                        logger.error("err.getMessage():" + err.getMessage());
+                        return;
+                    }
+
+                    DefaultTableModel model = (DefaultTableModel) tabel.getModel();
+                    for(int i = 0; i < predict_result.length; i++) {
+                        for (int j = 0; j < predict_result[i].length; j++) {
+                            model.setValueAt(predict_result[i][j], i+1, j);
+                        }
+                    }
+                    resultLabel.setText("结果详情请看：" + PropertyUtil.CUR_DETAIL_FILENAME);
+                    resultLabel.setVisible(true);
+                }
             }
         });
 
@@ -499,6 +579,24 @@ public class SimpleFrame extends JFrame{
         isIn = in_out.equals("In") ? true : false;
         String temp = project + classification.predict(project, classifier_name, sampling_name, ensemble_name, times, numFolds, isIn);
         predict_result = temp.split(",");
+        return predict_result;
+    }
+
+    private String[][] getAllClassification() throws Exception {
+        String[][] predict_result = new String[12][6];
+        String[] sampling_list = new String[]{"Simple", "ROS", "RUS", "Smote"};
+        String[] ensemble_list = new String[]{"No ensemble", "Bagging", "Boosting"};
+        Classification classification = new Classification(data);
+        isIn = in_out.equals("In") ? true : false;
+        int len = 0;
+        for(int i = 0; i < ensemble_list.length; i++) {
+            ensemble_name = ensemble_list[i];
+            for (int j = 0; j < sampling_list.length; j++) {
+                sampling_name = sampling_list[j];
+                String temp = project + classification.predict(project, classifier_name, sampling_name, ensemble_name, times, numFolds, isIn);
+                predict_result[len++] = temp.split(",");
+            }
+        }
         return predict_result;
     }
 
